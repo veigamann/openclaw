@@ -34,44 +34,11 @@ jobs:
           test -f ios18-sideload.patch
           git apply --verbose ios18-sideload.patch
 
-      - name: Drop embedded Watch app dependency
+      - name: Prepare tree for an unentitled iOS 18 build
         run: |
           set -euo pipefail
-          python3 - <<'PYEOF'
-          import re
-          path = "apps/ios/project.yml"
-          src = open(path).read()
-          src = src.replace("      - target: OpenClawWatchApp\n", "")
-          # xcodegen rejects a null dependency list; normalise empty ones to [].
-          src = re.sub(r'\n([ \t]*)dependencies:\n([ \t]*)(?=[A-Za-z])',
-                       lambda m: f"\n{m.group(1)}dependencies: []\n{m.group(2)}", src)
-          open(path, "w").write(src)
-          PYEOF
-          grep -n "OpenClawWatchApp\|dependencies: \[\]" apps/ios/project.yml || true
-
-      - name: App Group fallback for unentitled builds
-        run: |
-          set -euo pipefail
-          python3 - <<'PYEOF'
-          path = "apps/shared/OpenClawKit/Sources/OpenClawKit/OpenClawAppGroup.swift"
-          src = open(path).read()
-          old = """        let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
-              return raw?.trimmedNonEmpty ?? self.canonicalIdentifier"""
-          if "containerURL(forSecurityApplicationGroupIdentifier: candidate)" in src:
-              print("already patched")
-          else:
-              new = """        let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
-              let candidate = raw?.trimmedNonEmpty ?? self.canonicalIdentifier
-              guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: candidate) != nil else {
-                  return Bundle.main.bundleIdentifier ?? candidate
-              }
-              return candidate"""
-              marker = """        let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
-              return raw?.trimmedNonEmpty ?? self.canonicalIdentifier"""
-              assert marker in src, "app group identifier body not found"
-              open(path, "w").write(src.replace(marker, new, 1))
-              print("patched app group fallback")
-          PYEOF
+          curl -fsSL "https://raw.githubusercontent.com/veigamann/openclaw/main/sideload/prepare-tree.py" -o "$RUNNER_TEMP/prepare-tree.py"
+          python3 "$RUNNER_TEMP/prepare-tree.py"
 
       - name: Select Xcode
         run: |
