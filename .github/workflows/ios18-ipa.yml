@@ -1,0 +1,74 @@
+# Copy to <repo>/.github/workflows/ios18-ipa.yml
+# Commit ios18-sideload.patch at the repo root as well.
+#
+# Builds an UNSIGNED .ipa with an iOS 18 deployment target, usable for
+# SideStore/AltStore sideloading on an iPhone XR (iOS 18.x).
+name: iOS 18 sideload IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: "Commit/branch to build. Use 0c94b6966078267c984a8a7cdbd0b49d069a2410 for the zero-patch pre-26.2 tree."
+        type: string
+        default: "0c94b6966078267c984a8a7cdbd0b49d069a2410"
+      bundle_id:
+        description: "Unique bundle id prefix (must be yours, e.g. com.matheusveiga.openclaw)"
+        type: string
+        default: "com.matheusveiga.openclaw"
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    # macos-26 ships Xcode 26.x (fine for the pinned commit and for patched main).
+    # If GitHub exposes a macos-27 image with Xcode 27.1, that also works.
+    runs-on: macos-26
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+          fetch-depth: 1
+
+      - name: Apply iOS 18 patch (skipped on the pinned pre-26.2 commit)
+        if: ${{ inputs.target_ref == 'main' }}
+        run: git apply --verbose ios18-sideload.patch
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare --activate
+
+      - name: Install JS inputs for the iOS generator
+        run: |
+          pnpm install --frozen-lockfile \
+            --filter '@openclaw/mermaid-renderer...' \
+            --filter '@openclaw/gateway-protocol...'
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Build unsigned IPA
+        env:
+          SIDELOAD_BUNDLE_ID: ${{ inputs.bundle_id }}
+        run: bash build-unsigned-ipa.sh
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenClaw-unsigned-ipa
+          path: build/OpenClaw-unsigned.ipa
+          if-no-files-found: error
