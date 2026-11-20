@@ -37,8 +37,17 @@ jobs:
       - name: Drop embedded Watch app dependency
         run: |
           set -euo pipefail
-          sed -i '' '/- target: OpenClawWatchApp$/d' apps/ios/project.yml
-          grep -n "OpenClawWatchApp" apps/ios/project.yml || true
+          python3 - <<'PYEOF'
+          import re
+          path = "apps/ios/project.yml"
+          src = open(path).read()
+          src = src.replace("      - target: OpenClawWatchApp\n", "")
+          # xcodegen rejects a null dependency list; normalise empty ones to [].
+          src = re.sub(r'\n([ \t]*)dependencies:\n([ \t]*)(?=[A-Za-z])',
+                       lambda m: f"\n{m.group(1)}dependencies: []\n{m.group(2)}", src)
+          open(path, "w").write(src)
+          PYEOF
+          grep -n "OpenClawWatchApp\|dependencies: \[\]" apps/ios/project.yml || true
 
       - name: Select Xcode
         run: |
