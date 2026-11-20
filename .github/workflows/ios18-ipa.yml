@@ -64,20 +64,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat > apps/ios/.local-signing.xcconfig <<EOF
-          OPENCLAW_CODE_SIGN_STYLE = Manual
-          OPENCLAW_CODE_SIGN_IDENTITY = "-"
-          OPENCLAW_DEVELOPMENT_TEAM =
-          OPENCLAW_APP_BUNDLE_ID = \${APP_BUNDLE_ID}
-          OPENCLAW_SHARE_BUNDLE_ID = \${APP_BUNDLE_ID}.share
-          OPENCLAW_APP_GROUP_ID = group.\${APP_BUNDLE_ID}.shared
-          OPENCLAW_ACTIVITY_WIDGET_BUNDLE_ID = \${APP_BUNDLE_ID}.activitywidget
-          OPENCLAW_WATCH_APP_BUNDLE_ID = \${APP_BUNDLE_ID}.watchkitapp
-          OPENCLAW_APP_PROFILE =
-          OPENCLAW_SHARE_PROFILE =
-          OPENCLAW_ACTIVITY_WIDGET_PROFILE =
-          OPENCLAW_WATCH_APP_PROFILE =
-          EOF
+          {
+            echo "OPENCLAW_CODE_SIGN_STYLE = Manual"
+            echo "OPENCLAW_CODE_SIGN_IDENTITY = -"
+            echo "OPENCLAW_DEVELOPMENT_TEAM ="
+            echo "OPENCLAW_APP_BUNDLE_ID = $APP_BUNDLE_ID"
+            echo "OPENCLAW_SHARE_BUNDLE_ID = $APP_BUNDLE_ID.share"
+            echo "OPENCLAW_APP_GROUP_ID = group.$APP_BUNDLE_ID.shared"
+            echo "OPENCLAW_ACTIVITY_WIDGET_BUNDLE_ID = $APP_BUNDLE_ID.activitywidget"
+            echo "OPENCLAW_WATCH_APP_BUNDLE_ID = $APP_BUNDLE_ID.watchkitapp"
+            echo "OPENCLAW_APP_PROFILE ="
+            echo "OPENCLAW_SHARE_PROFILE ="
+            echo "OPENCLAW_ACTIVITY_WIDGET_PROFILE ="
+            echo "OPENCLAW_WATCH_APP_PROFILE ="
+          } > apps/ios/.local-signing.xcconfig
           cat apps/ios/.local-signing.xcconfig
 
           bash scripts/ios-write-version-xcconfig.sh
