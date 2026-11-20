@@ -61,8 +61,11 @@ jobs:
             --filter '@openclaw/mermaid-renderer...' \
             --filter '@openclaw/gateway-protocol...'
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install pinned xcodegen
+        run: |
+          set -euo pipefail
+          ./scripts/install-xcodegen.sh "$RUNNER_TEMP/xcodegen"
+          echo "$RUNNER_TEMP/xcodegen" >> "$GITHUB_PATH"
 
       - name: Build unsigned IPA
         env:
