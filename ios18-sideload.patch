@@ -1,0 +1,290 @@
+diff --git a/apps/ios/Sources/Design/ChatProTab.swift b/apps/ios/Sources/Design/ChatProTab.swift
+index 193aef3..05e4256 100644
+--- a/apps/ios/Sources/Design/ChatProTab.swift
++++ b/apps/ios/Sources/Design/ChatProTab.swift
+@@ -4,6 +4,18 @@ import OpenClawKit
+ import OpenClawProtocol
+ import SwiftUI
+ 
++private struct ChatScrollEdgeTreatment: ViewModifier {
++    func body(content: Content) -> some View {
++        if #available(iOS 26.0, *) {
++            // The shared canvas supplies color for the native blur. Automatic
++            // edge effects harden to black when the host inserts an opaque fill.
++            content.scrollEdgeEffectStyle(.soft, for: .vertical)
++        } else {
++            content
++        }
++    }
++}
++
+ struct ChatProTab: View {
+     enum GatewayStatusTone: Equatable {
+         case success
+@@ -84,9 +96,7 @@ struct ChatProTab: View {
+             // scope. Automatic reconnects keep the handoff pending while they retry an
+             // unreachable gateway, and the toolbar is the way to reach Gateway settings.
+                 .disabled(self.isGatewayTransitionPending)
+-                // The shared canvas supplies color for the native blur. Automatic
+-                // edge effects harden to black when the host inserts an opaque fill.
+-                .scrollEdgeEffectStyle(.soft, for: .vertical)
++                .modifier(ChatScrollEdgeTreatment())
+                 // The bar's title slot shows the session like web's header; toolbar items collapse to
+                 // their icon on iOS 26+ (and move to the side bar in landscape), so the title lives here.
+                 .navigationTitle(self.headerSessionTitle ?? "")
+@@ -133,14 +143,26 @@ struct ChatProTab: View {
+         if let headerSidebarAction {
+             OpenClawSidebarToolbarItem(action: headerSidebarAction, placement: .topBarLeading)
+         }
+-        ToolbarItem(placement: .topBarLeading) {
+-            self.headerAgentIdentity
++        if #available(iOS 26.0, *) {
++            ToolbarItem(placement: .topBarLeading) {
++                self.headerAgentIdentity
++            }
++            .sharedBackgroundVisibility(.hidden)
++        } else {
++            ToolbarItem(placement: .topBarLeading) {
++                self.headerAgentIdentity
++            }
+         }
+-        .sharedBackgroundVisibility(.hidden)
+-        ToolbarItem(placement: .topBarTrailing) {
+-            self.chatActionsMenu
++        if #available(iOS 26.0, *) {
++            ToolbarItem(placement: .topBarTrailing) {
++                self.chatActionsMenu
++            }
++            .sharedBackgroundVisibility(.hidden)
++        } else {
++            ToolbarItem(placement: .topBarTrailing) {
++                self.chatActionsMenu
++            }
+         }
+-        .sharedBackgroundVisibility(.hidden)
+     }
+ 
+     @ViewBuilder
+diff --git a/apps/ios/Sources/Design/OpenClawBrand.swift b/apps/ios/Sources/Design/OpenClawBrand.swift
+index feb5794..d459ac8 100644
+--- a/apps/ios/Sources/Design/OpenClawBrand.swift
++++ b/apps/ios/Sources/Design/OpenClawBrand.swift
+@@ -256,8 +256,8 @@ extension View {
+     }
+ }
+ 
+-/// Capsule surface shared by the branded button styles, using system
+-/// Liquid Glass (prominent is tinted).
++/// Capsule surface shared by the branded button styles. iOS 26 uses system
++/// Liquid Glass (prominent is tinted); earlier systems get a flat adaptive fill.
+ /// No gradients, sheens, or shadows: they turn into a muddy halo on dark surfaces.
+ enum OpenClawButtonSurfaceKind {
+     case prominent
+@@ -267,26 +267,45 @@ enum OpenClawButtonSurfaceKind {
+ private struct OpenClawButtonSurfaceModifier: ViewModifier {
+     let kind: OpenClawButtonSurfaceKind
+     let isEnabled: Bool
++    let isPressed: Bool
+ 
+     private var isFilled: Bool {
+         self.kind == .prominent && self.isEnabled
+     }
+ 
+     func body(content: Content) -> some View {
+-        content.glassEffect(self.glass, in: .capsule)
++        if #available(iOS 26.0, *) {
++            content.glassEffect(self.glass, in: .capsule)
++        } else {
++            content
++                .background(Capsule(style: .continuous).fill(self.fallbackFill))
++                .overlay {
++                    if !self.isFilled {
++                        Capsule(style: .continuous).strokeBorder(Color(uiColor: .separator), lineWidth: 0.75)
++                    }
++                }
++                .opacity(self.isPressed && self.isEnabled ? 0.82 : 1)
++                .animation(.smooth(duration: 0.14), value: self.isPressed)
++        }
+     }
+ 
++    @available(iOS 26.0, *)
+     private var glass: Glass {
+         self.isFilled ? .regular.tint(OpenClawBrand.accentFill).interactive() : .regular.interactive(self.isEnabled)
+     }
++
++    private var fallbackFill: Color {
++        self.isFilled ? OpenClawBrand.accentFill : OpenClawBrand.activationNeutralSurface
++    }
+ }
+ 
+ extension View {
+     func openClawButtonSurface(
+         _ kind: OpenClawButtonSurfaceKind,
+-        isEnabled: Bool) -> some View
++        isEnabled: Bool,
++        isPressed: Bool) -> some View
+     {
+-        self.modifier(OpenClawButtonSurfaceModifier(kind: kind, isEnabled: isEnabled))
++        self.modifier(OpenClawButtonSurfaceModifier(kind: kind, isEnabled: isEnabled, isPressed: isPressed))
+     }
+ 
+     /// System prominent button filled with the accent. The app tint is the readable
+@@ -311,7 +330,7 @@ struct OpenClawPrimaryActionButtonStyle: ButtonStyle {
+             .minimumScaleFactor(0.8)
+             .padding(.vertical, 8)
+             .frame(maxWidth: .infinity, minHeight: self.height)
+-            .openClawButtonSurface(.prominent, isEnabled: self.isEnabled)
++            .openClawButtonSurface(.prominent, isEnabled: self.isEnabled, isPressed: configuration.isPressed)
+             .contentShape(Capsule(style: .continuous))
+     }
+ }
+@@ -329,7 +348,7 @@ struct OpenClawSecondaryActionButtonStyle: ButtonStyle {
+             .minimumScaleFactor(0.8)
+             .padding(.vertical, 8)
+             .frame(maxWidth: .infinity, minHeight: self.height)
+-            .openClawButtonSurface(.secondary, isEnabled: self.isEnabled)
++            .openClawButtonSurface(.secondary, isEnabled: self.isEnabled, isPressed: configuration.isPressed)
+             .contentShape(Capsule(style: .continuous))
+     }
+ }
+@@ -347,7 +366,7 @@ struct OpenClawCloseButtonStyle: ButtonStyle {
+             .fixedSize(horizontal: true, vertical: false)
+             .frame(minWidth: self.minWidth, minHeight: self.height)
+             .padding(.horizontal, 7)
+-            .openClawButtonSurface(.secondary, isEnabled: self.isEnabled)
++            .openClawButtonSurface(.secondary, isEnabled: self.isEnabled, isPressed: configuration.isPressed)
+             // Visual stays 36pt; the vertical padding brings the hit area to 44pt.
+             .padding(.vertical, 4)
+             .contentShape(Rectangle())
+diff --git a/apps/ios/Sources/Design/OpenClawProComponents.swift b/apps/ios/Sources/Design/OpenClawProComponents.swift
+index 9f1606a..0c371d3 100644
+--- a/apps/ios/Sources/Design/OpenClawProComponents.swift
++++ b/apps/ios/Sources/Design/OpenClawProComponents.swift
+@@ -96,21 +96,40 @@ extension View {
+ 
+     @ViewBuilder
+     func openClawGlassButton(prominent: Bool = false, tint: Color? = nil) -> some View {
+-        if prominent {
++        if #available(iOS 26.0, *) {
++            if prominent {
++                self
++                    .font(OpenClawType.subheadSemiBold)
++                    .buttonStyle(.glassProminent)
++                    .tint(tint ?? OpenClawBrand.accentFill)
++            } else {
++                self
++                    .font(OpenClawType.subheadSemiBold)
++                    .buttonStyle(.glass)
++                    .tint(tint)
++            }
++        } else if prominent {
+             self
+                 .font(OpenClawType.subheadSemiBold)
+-                .buttonStyle(.glassProminent)
++                .buttonStyle(.borderedProminent)
+                 .tint(tint ?? OpenClawBrand.accentFill)
+         } else {
+             self
+                 .font(OpenClawType.subheadSemiBold)
+-                .buttonStyle(.glass)
++                .buttonStyle(.bordered)
+                 .tint(tint)
+         }
+     }
+ 
++    @ViewBuilder
+     func openClawGlassSurface() -> some View {
+-        self.glassEffect(.regular, in: .rect(cornerRadius: OpenClawProMetric.controlRadius))
++        if #available(iOS 26.0, *) {
++            self.glassEffect(.regular, in: .rect(cornerRadius: OpenClawProMetric.controlRadius))
++        } else {
++            self.background(
++                .regularMaterial,
++                in: RoundedRectangle(cornerRadius: OpenClawProMetric.controlRadius, style: .continuous))
++        }
+     }
+ }
+ 
+@@ -283,13 +302,20 @@ struct OpenClawSidebarToolbarItem: ToolbarContent {
+         }
+     }
+ 
++    @ToolbarContentBuilder
+     private var item: some ToolbarContent {
+-        ToolbarItem(placement: self.placement) {
+-            OpenClawSidebarControlButton(action: self.action)
++        if #available(iOS 26.0, *) {
++            ToolbarItem(placement: self.placement) {
++                OpenClawSidebarControlButton(action: self.action)
++            }
++            // Sidebar reveal is intentionally background-free in every host;
++            // suppress the toolbar's automatic glass so it cannot reappear.
++            .sharedBackgroundVisibility(.hidden)
++        } else {
++            ToolbarItem(placement: self.placement) {
++                OpenClawSidebarControlButton(action: self.action)
++            }
+         }
+-        // Sidebar reveal is intentionally background-free in every host;
+-        // suppress the toolbar's automatic glass so it cannot reappear.
+-        .sharedBackgroundVisibility(.hidden)
+     }
+ }
+ 
+@@ -297,7 +323,11 @@ struct OpenClawGlassControlGroup<Content: View>: View {
+     @ViewBuilder let content: Content
+ 
+     var body: some View {
+-        GlassEffectContainer(spacing: 8) {
++        if #available(iOS 26.0, *) {
++            GlassEffectContainer(spacing: 8) {
++                self.content
++            }
++        } else {
+             self.content
+         }
+     }
+diff --git a/apps/ios/project.yml b/apps/ios/project.yml
+index d2012ae..9da9253 100644
+--- a/apps/ios/project.yml
++++ b/apps/ios/project.yml
+@@ -3,7 +3,7 @@ options:
+   preGenCommand: bash ../../scripts/ios-generate-test-tls-identity.sh && node ../../scripts/prepare-apple-mermaid.mjs
+   bundleIdPrefix: ai.openclawfoundation
+   deploymentTarget:
+-    iOS: "26.2"
++    iOS: "18.0"
+   xcodeVersion: "26.0"
+ 
+ settings:
+@@ -82,9 +82,6 @@ targets:
+         embed: true
+       - target: OpenClawActivityWidget
+         embed: true
+-      # A companion watch application belongs in the standard Watch bundle location.
+-      # PlugIns is for extension products and breaks paired watch installation.
+-      - target: OpenClawWatchApp
+       - package: OpenClawKit
+       - package: OpenClawKit
+         product: OpenClawChatUI
+diff --git a/apps/shared/OpenClawKit/Sources/OpenClawKit/OpenClawAppGroup.swift b/apps/shared/OpenClawKit/Sources/OpenClawKit/OpenClawAppGroup.swift
+index b006f1f..f2c052a 100644
+--- a/apps/shared/OpenClawKit/Sources/OpenClawKit/OpenClawAppGroup.swift
++++ b/apps/shared/OpenClawKit/Sources/OpenClawKit/OpenClawAppGroup.swift
+@@ -5,6 +5,15 @@ public enum OpenClawAppGroup {
+ 
+     public static var identifier: String {
+         let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
+-        return raw?.trimmedNonEmpty ?? self.canonicalIdentifier
++        let candidate = raw?.trimmedNonEmpty ?? self.canonicalIdentifier
++        // Unentitled builds (for example a sideloaded IPA signed without the App Groups
++        // capability) must not select the shared suite: UserDefaults(suiteName:) still
++        // returns an object, but writes to an unowned group are dropped.
++        guard
++            FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: candidate) != nil
++        else {
++            return Bundle.main.bundleIdentifier ?? candidate
++        }
++        return candidate
+     }
+ }
