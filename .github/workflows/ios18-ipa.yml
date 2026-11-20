@@ -49,6 +49,30 @@ jobs:
           PYEOF
           grep -n "OpenClawWatchApp\|dependencies: \[\]" apps/ios/project.yml || true
 
+      - name: App Group fallback for unentitled builds
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          path = "apps/shared/OpenClawKit/Sources/OpenClawKit/OpenClawAppGroup.swift"
+          src = open(path).read()
+          old = """        let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
+              return raw?.trimmedNonEmpty ?? self.canonicalIdentifier"""
+          if "containerURL(forSecurityApplicationGroupIdentifier: candidate)" in src:
+              print("already patched")
+          else:
+              new = """        let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
+              let candidate = raw?.trimmedNonEmpty ?? self.canonicalIdentifier
+              guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: candidate) != nil else {
+                  return Bundle.main.bundleIdentifier ?? candidate
+              }
+              return candidate"""
+              marker = """        let raw = Bundle.main.object(forInfoDictionaryKey: "OpenClawAppGroupIdentifier") as? String
+              return raw?.trimmedNonEmpty ?? self.canonicalIdentifier"""
+              assert marker in src, "app group identifier body not found"
+              open(path, "w").write(src.replace(marker, new, 1))
+              print("patched app group fallback")
+          PYEOF
+
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
