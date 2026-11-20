@@ -1,19 +1,15 @@
-# Copy to <repo>/.github/workflows/ios18-ipa.yml
-# Commit ios18-sideload.patch at the repo root as well.
-#
-# Builds an UNSIGNED .ipa with an iOS 18 deployment target, usable for
-# SideStore/AltStore sideloading on an iPhone XR (iOS 18.x).
+# Builds an UNSIGNED .ipa with an iOS 18 deployment target for SideStore/AltStore.
 name: iOS 18 sideload IPA
 
 on:
   workflow_dispatch:
     inputs:
       target_ref:
-        description: "Commit/branch to build. Use 0c94b6966078267c984a8a7cdbd0b49d069a2410 for the zero-patch pre-26.2 tree."
+        description: "Commit/branch to build (0c94b6966078267c984a8a7cdbd0b49d069a2410 = last pre-26.2 tree)"
         type: string
         default: "0c94b6966078267c984a8a7cdbd0b49d069a2410"
       bundle_id:
-        description: "Unique bundle id prefix (must be yours, e.g. com.matheusveiga.openclaw)"
+        description: "Unique bundle id prefix"
         type: string
         default: "com.matheusveiga.openclaw"
 
@@ -22,8 +18,6 @@ permissions:
 
 jobs:
   ipa:
-    # macos-26 ships Xcode 26.x (fine for the pinned commit and for patched main).
-    # If GitHub exposes a macos-27 image with Xcode 27.1, that also works.
     runs-on: macos-26
     timeout-minutes: 180
     steps:
@@ -33,9 +27,12 @@ jobs:
           ref: ${{ inputs.target_ref }}
           fetch-depth: 1
 
-      - name: Apply iOS 18 patch (skipped on the pinned pre-26.2 commit)
+      - name: Apply iOS 18 patch (only for main)
         if: ${{ inputs.target_ref == 'main' }}
-        run: git apply --verbose ios18-sideload.patch
+        run: |
+          set -euo pipefail
+          test -f ios18-sideload.patch
+          git apply --verbose ios18-sideload.patch
 
       - name: Select Xcode
         run: |
@@ -63,8 +60,55 @@ jobs:
 
       - name: Build unsigned IPA
         env:
-          SIDELOAD_BUNDLE_ID: ${{ inputs.bundle_id }}
-        run: bash build-unsigned-ipa.sh
+          APP_BUNDLE_ID: ${{ inputs.bundle_id }}
+        run: |
+          set -euo pipefail
+
+          cat > apps/ios/.local-signing.xcconfig <<EOF
+          OPENCLAW_CODE_SIGN_STYLE = Manual
+          OPENCLAW_CODE_SIGN_IDENTITY = "-"
+          OPENCLAW_DEVELOPMENT_TEAM =
+          OPENCLAW_APP_BUNDLE_ID = \${APP_BUNDLE_ID}
+          OPENCLAW_SHARE_BUNDLE_ID = \${APP_BUNDLE_ID}.share
+          OPENCLAW_APP_GROUP_ID = group.\${APP_BUNDLE_ID}.shared
+          OPENCLAW_ACTIVITY_WIDGET_BUNDLE_ID = \${APP_BUNDLE_ID}.activitywidget
+          OPENCLAW_WATCH_APP_BUNDLE_ID = \${APP_BUNDLE_ID}.watchkitapp
+          OPENCLAW_APP_PROFILE =
+          OPENCLAW_SHARE_PROFILE =
+          OPENCLAW_ACTIVITY_WIDGET_PROFILE =
+          OPENCLAW_WATCH_APP_PROFILE =
+          EOF
+          cat apps/ios/.local-signing.xcconfig
+
+          bash scripts/ios-write-version-xcconfig.sh
+          node scripts/ios-write-swift-filelist.mjs
+
+          if ! command -v swiftformat >/dev/null 2>&1 || ! command -v swiftlint >/dev/null 2>&1; then
+            ./scripts/install-swift-tools.sh "$PWD/.build/swift-tools"
+            export PATH="$PWD/.build/swift-tools:$PATH"
+          fi
+
+          ( cd apps/ios && xcodegen generate )
+
+          xcodebuild \
+            -project apps/ios/OpenClaw.xcodeproj \
+            -scheme OpenClaw \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/OpenClaw.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+
+          APP="build/OpenClaw.xcarchive/Products/Applications/OpenClaw.app"
+          test -d "$APP"
+          test ! -d "$APP/_CodeSignature"
+          rm -rf build/Payload build/OpenClaw-unsigned.ipa
+          mkdir -p build/Payload
+          cp -R "$APP" build/Payload/
+          ( cd build && /usr/bin/zip -qry OpenClaw-unsigned.ipa Payload )
+          ls -lh build/OpenClaw-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
