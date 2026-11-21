@@ -516,6 +516,25 @@ def patch_app_group() -> None:
     print("[ok]   AppGroup: bundle-id fallback")
 
 
+# --------------------------------------------------------------------------
+# 5. UIKit configuration types that are iOS 26-only
+# --------------------------------------------------------------------------
+def patch_share_extension() -> None:
+    edit(
+        IOS / "ShareExtension/ShareComposeView.swift",
+        "        var configuration = UIButton.Configuration.prominentGlass()\n",
+        """        var configuration: UIButton.Configuration
+        if #available(iOS 26.0, *) {
+            configuration = .prominentGlass()
+        } else {
+            configuration = .filled()
+        }
+""",
+        "ShareComposeView: prominentGlass fallback",
+    )
+
+
+
 def main() -> int:
     if not PROJECT.is_file():
         print("not at the repository root", file=sys.stderr)
@@ -524,6 +543,7 @@ def main() -> int:
     strip_ios27_toolbar_api()
     restore_ios26_fallbacks()
     patch_app_group()
+    patch_share_extension()
     print(f"\n{len(applied)} change(s) applied")
     return 0
 
