@@ -1,0 +1,9 @@
+name: probe-runner
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: xcode-27-arm64
+    timeout-minutes: 10
+    steps:
+      - run: sw_vers; xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version
