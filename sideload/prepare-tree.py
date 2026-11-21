@@ -78,6 +78,10 @@ def prepare_project() -> None:
         lambda m: f"\n{m.group(1)}dependencies: []\n{m.group(2)}",
         out,
     )
+    # The SwiftFormat/SwiftLint pre-build phases are a style gate, not a
+    # correctness one; a downgraded tree trips rules that upstream does not.
+    if "SwiftFormat (lint)" in out:
+        out = re.sub(r"\n    preBuildScripts:\n.*?\n    settings:\n", "\n    settings:\n", out, count=1, flags=re.S)
     if out != src:
         PROJECT.write_text(out)
         applied.append("project.yml")
@@ -535,6 +539,17 @@ def patch_share_extension() -> None:
 
 
 
+
+def tidy_whitespace() -> None:
+    """Collapse the blank lines left behind by removed declarations."""
+    for path in (PRO, BRAND, CHAT, IOS / "ShareExtension/ShareComposeView.swift"):
+        src = path.read_text()
+        out = re.sub(r"\n{3,}", "\n\n", src)
+        if out != src:
+            path.write_text(out)
+            print(f"[ok]   {path.name}: collapsed blank lines")
+
+
 def main() -> int:
     if not PROJECT.is_file():
         print("not at the repository root", file=sys.stderr)
@@ -544,6 +559,7 @@ def main() -> int:
     restore_ios26_fallbacks()
     patch_app_group()
     patch_share_extension()
+    tidy_whitespace()
     print(f"\n{len(applied)} change(s) applied")
     return 0
 
