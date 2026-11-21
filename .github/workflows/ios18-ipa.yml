@@ -12,6 +12,10 @@ on:
         description: "Unique bundle id prefix"
         type: string
         default: "com.matheusveiga.openclaw"
+      xcode_app:
+        description: "Xcode.app to use (Xcode 26.6 IRGen crashes on this tree)"
+        type: string
+        default: "/Applications/Xcode_26.4.1.app"
 
 permissions:
   contents: read
@@ -34,8 +38,14 @@ jobs:
           python3 "$RUNNER_TEMP/prepare-tree.py"
 
       - name: Select Xcode
+        env:
+          XCODE_APP: ${{ inputs.xcode_app }}
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          set -euo pipefail
+          app="${XCODE_APP:-/Applications/Xcode_26.4.1.app}"
+          if [ ! -d "$app" ]; then app="/Applications/Xcode.app"; fi
+          sudo xcode-select -s "$app/Contents/Developer"
+          echo "using $app"
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
