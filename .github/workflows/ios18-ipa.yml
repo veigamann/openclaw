@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       target_ref:
-        description: "Commit/branch to build (0c94b6966078267c984a8a7cdbd0b49d069a2410 = last pre-26.2 tree)"
+        description: "Commit/branch to build"
         type: string
-        default: "0c94b6966078267c984a8a7cdbd0b49d069a2410"
+        default: "main"
       bundle_id:
         description: "Unique bundle id prefix"
         type: string
@@ -26,13 +26,6 @@ jobs:
         with:
           ref: ${{ inputs.target_ref }}
           fetch-depth: 1
-
-      - name: Apply iOS 18 patch (only for main)
-        if: ${{ inputs.target_ref == 'main' }}
-        run: |
-          set -euo pipefail
-          test -f ios18-sideload.patch
-          git apply --verbose ios18-sideload.patch
 
       - name: Prepare tree for an unentitled iOS 18 build
         run: |
